@@ -1,0 +1,504 @@
+{
+  "name": "AI Sales Agent · Evaluasi",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "**Evaluasi.** POST `eval` `{\"limit\": 20}` (opsional) menjalankan dev set berlabel lewat agent chat, lalu LLM-as-judge menilai benar, bersumber, halusinasi. Hasil disimpan di `retail.eval_hasil`.",
+        "height": 90,
+        "width": 760,
+        "color": 4
+      },
+      "name": "Catatan 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "fc856561-cfd1-4f6e-9981-936f30b9bfd6"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "eval",
+        "options": {}
+      },
+      "name": "Webhook Evaluasi",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        224
+      ],
+      "id": "1dddc80c-4afd-4d33-bae9-4dcc3cb4b655",
+      "webhookId": "6ec5a00f-649b-4e1a-9588-3844a8d575af"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $json.body || {};\nreturn [{ json: { run_id: 'run-' + new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14), limit: Math.min(Number(b.limit) || 20, 20) } }];"
+      },
+      "name": "Buat Run ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        224
+      ],
+      "id": "fa2dc3b7-748b-49e0-a170-31f0d8cda8bb"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    d.id AS qid, \n    d.pertanyaan, \n    d.jenis, \n    d.jawaban_benar AS kunci, \n    COALESCE(d.sumber_benar, '') AS sumber_benar, \n    $1::text AS run_id, \n    COALESCE(\n        (\n            SELECT 'Produk ' || p.nama || ': harga Rp' || p.harga || ', stok ' || p.stok || ', ' || p.deskripsi \n            FROM retail.produk p \n            WHERE p.nama = d.sumber_benar\n        ), \n        (\n            SELECT k.teks \n            FROM retail.dokumen k \n            WHERE k.sumber = d.sumber_benar\n        ), \n        ''\n    ) AS referensi, \n    (\n        SELECT string_agg(nama, '; ' ORDER BY sku) \n        FROM retail.produk\n    ) AS daftar_produk \nFROM retail.eval_dev_set d \nORDER BY d.id \nLIMIT $2::int;",
+        "options": {
+          "queryReplacement": "={{ [ $json.run_id, $json.limit ] }}"
+        }
+      },
+      "name": "Ambil Dev Set",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        528,
+        224
+      ],
+      "id": "821fce89-5eaa-4629-a13e-cc5e599580bc",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Loop Per Pertanyaan",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        784,
+        224
+      ],
+      "id": "74efa237-6c29-4daa-bd99-2531f1cc1cd4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.pertanyaan, session_id: $json.run_id + '-q' + $json.qid }) }}",
+        "options": {
+          "timeout": 150000
+        }
+      },
+      "name": "Tanya Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1040,
+        320
+      ],
+      "id": "6c1c1c33-617b-4117-85ea-241f35a6c1cc",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "22612a76-135c-5a82-b39a-f2acca5eaf37",
+              "name": "qid",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.qid }}",
+              "type": "number"
+            },
+            {
+              "id": "cc70b6a6-3982-5cb1-afaa-12932d6fec41",
+              "name": "run_id",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.run_id }}",
+              "type": "string"
+            },
+            {
+              "id": "01b474d6-4f75-5c91-9fd6-8973af5db573",
+              "name": "pertanyaan",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.pertanyaan }}",
+              "type": "string"
+            },
+            {
+              "id": "66370988-fd68-5f4d-bda2-8a31eb9d3629",
+              "name": "jenis",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.jenis }}",
+              "type": "string"
+            },
+            {
+              "id": "bb72e3fe-67ff-5cde-bb53-eb88f03a5bfc",
+              "name": "kunci",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.kunci }}",
+              "type": "string"
+            },
+            {
+              "id": "5610b594-ca62-5c8d-ad39-0e508f7715af",
+              "name": "sumber_benar",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.sumber_benar }}",
+              "type": "string"
+            },
+            {
+              "id": "14217c4a-1d28-5f33-831a-83d39766ef35",
+              "name": "referensi",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.referensi }}",
+              "type": "string"
+            },
+            {
+              "id": "1ff70e99-38c3-5843-b7e3-74bc48d411d2",
+              "name": "daftar_produk",
+              "value": "={{ $('Loop Per Pertanyaan').item.json.daftar_produk }}",
+              "type": "string"
+            },
+            {
+              "id": "506ee848-b9b1-5b4e-b2d9-d59066013e60",
+              "name": "jawaban",
+              "value": "={{ $json.jawaban || ('(error: ' + ($json.error ? JSON.stringify($json.error).slice(0, 120) : 'tanpa jawaban') + ')') }}",
+              "type": "string"
+            },
+            {
+              "id": "e5d4f491-42a2-57a5-b55a-6b5a782b5faf",
+              "name": "sumber",
+              "value": "={{ $json.sumber || [] }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Gabung Jawaban",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1296,
+        320
+      ],
+      "id": "0d3b1da9-e0eb-4f5a-b42d-ee645b8f1772"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Kamu hakim penilai chatbot Toko Senja Tas yang menjual tas dan pouch. Nilai jawaban agent terhadap kunci dan referensi. Beri hasil objektif.\n\nPertanyaan: {{ $json.pertanyaan }}\nJenis: {{ $json.jenis }} (jawab = agent seharusnya menjawab; tolak = agent seharusnya menolak sopan atau menawarkan admin/owner)\nKunci jawaban: {{ $json.kunci }}\nSumber seharusnya: {{ $json.sumber_benar || '(tidak ada)' }}\nReferensi resmi toko (benar, termasuk harga dan stok saat ini): {{ $json.referensi || '(tidak ada)' }}\nSemua produk yang dijual toko: {{ $json.daftar_produk }}\n\nJawaban agent: {{ $json.jawaban }}\nSumber yang disebut agent: {{ ($json.sumber || []).join('; ') || '(kosong)' }}\n\nAturan nilai:\n- benar: isi jawaban sesuai kunci. Untuk harga dan stok, referensi resmi terkini mengungguli angka awal dalam kunci karena transaksi dapat mengubah stok. Untuk jenis tolak: agent menolak atau menawarkan admin/owner tanpa menebak fakta.\n- bersumber: jenis jawab: agent menyebut sumber yang sesuai \"Sumber seharusnya\" (nama produk atau judul dokumen). Jenis tolak: true bila agent tidak mengarang sumber.\n- halusinasi: true HANYA bila jawaban memuat klaim (harga, stok, kebijakan, diskon, produk) yang bertentangan dengan Referensi/Kunci atau mengarang sesuatu yang tidak ada di sana. Detail tambahan yang cocok dengan Referensi atau menyebut produk yang ada di daftar produk toko BUKAN halusinasi. Menolak karena tidak tahu bukan halusinasi.\n- catatan: satu kalimat alasan.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "name": "Hakim LLM",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1568,
+        320
+      ],
+      "id": "a0e06cdd-b109-49b8-bef2-b362af7d43d3"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-6-luna",
+          "cachedResultName": "gpt-6-luna"
+        },
+        "builtInTools": {},
+        "options": {
+          "timeout": 60000,
+          "maxRetries": 2
+        }
+      },
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1504,
+        560
+      ],
+      "id": "ced1d782-f4b2-4656-86bd-1de46a3db54a",
+      "credentials": {
+        "openAiApi": {
+          "id": "ncp0mJmJnQ6RScKi",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"benar\": {\n      \"type\": \"boolean\"\n    },\n    \"bersumber\": {\n      \"type\": \"boolean\"\n    },\n    \"halusinasi\": {\n      \"type\": \"boolean\"\n    },\n    \"catatan\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"benar\",\n    \"bersumber\",\n    \"halusinasi\",\n    \"catatan\"\n  ]\n}"
+      },
+      "name": "Format Penilaian",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1776,
+        560
+      ],
+      "id": "17081a1d-18e0-4f18-bc72-59bdfd5a5129"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "22612a76-135c-5a82-b39a-f2acca5eaf37",
+              "name": "qid",
+              "value": "={{ $('Gabung Jawaban').item.json.qid }}",
+              "type": "number"
+            },
+            {
+              "id": "cc70b6a6-3982-5cb1-afaa-12932d6fec41",
+              "name": "run_id",
+              "value": "={{ $('Gabung Jawaban').item.json.run_id }}",
+              "type": "string"
+            },
+            {
+              "id": "01b474d6-4f75-5c91-9fd6-8973af5db573",
+              "name": "pertanyaan",
+              "value": "={{ $('Gabung Jawaban').item.json.pertanyaan }}",
+              "type": "string"
+            },
+            {
+              "id": "506ee848-b9b1-5b4e-b2d9-d59066013e60",
+              "name": "jawaban",
+              "value": "={{ $('Gabung Jawaban').item.json.jawaban }}",
+              "type": "string"
+            },
+            {
+              "id": "e5d4f491-42a2-57a5-b55a-6b5a782b5faf",
+              "name": "sumber",
+              "value": "={{ ($('Gabung Jawaban').item.json.sumber || []).join('; ') }}",
+              "type": "string"
+            },
+            {
+              "id": "6d94721e-d390-5c4a-86f0-2ccafe8bf1d6",
+              "name": "benar",
+              "value": "={{ $json.output.benar }}",
+              "type": "boolean"
+            },
+            {
+              "id": "15a1e700-2a62-5a82-b72f-0b53d4d90b51",
+              "name": "bersumber",
+              "value": "={{ $json.output.bersumber }}",
+              "type": "boolean"
+            },
+            {
+              "id": "65ef8ef4-6638-512d-9055-d9a870c16a25",
+              "name": "halusinasi",
+              "value": "={{ $json.output.halusinasi }}",
+              "type": "boolean"
+            },
+            {
+              "id": "dd0a292b-7e82-5ffe-b914-f6070b88c1a7",
+              "name": "catatan",
+              "value": "={{ $json.output.catatan }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Baris Skor",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1872,
+        320
+      ],
+      "id": "25b68777-0e40-445e-b41b-4789c84328df"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO retail.eval_hasil (\n    run_id, \n    qid, \n    pertanyaan, \n    jawaban, \n    sumber, \n    benar, \n    bersumber, \n    halusinasi, \n    catatan\n) \nVALUES (\n    $1::text, \n    $2::int, \n    $3::text, \n    $4::text, \n    $5::text, \n    $6::boolean, \n    $7::boolean, \n    $8::boolean, \n    $9::text\n) \nRETURNING \n    run_id, \n    qid;",
+        "options": {
+          "queryReplacement": "={{ [ $json.run_id, $json.qid, $json.pertanyaan, $json.jawaban, $json.sumber, $json.benar, $json.bersumber, $json.halusinasi, $json.catatan ] }}"
+        }
+      },
+      "name": "Simpan Skor",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2080,
+        320
+      ],
+      "id": "49703051-44ba-4881-a564-426a754b41fe",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    run_id, \n    count(*)::int AS total, \n    round(100.0 * avg(benar::int), 1) AS benar_pct, \n    round(100.0 * avg(bersumber::int), 1) AS bersumber_pct, \n    round(100.0 * avg(halusinasi::int), 1) AS halusinasi_pct \nFROM retail.eval_hasil \nWHERE run_id = $1::text \nGROUP BY run_id;",
+        "options": {
+          "queryReplacement": "={{ [ $('Buat Run ID').first().json.run_id ] }}"
+        }
+      },
+      "name": "Ringkas Skor",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1040,
+        112
+      ],
+      "id": "5864eaab-a867-4670-ad0b-116bcbe88c62",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Evaluasi": {
+      "main": [
+        [
+          {
+            "node": "Buat Run ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buat Run ID": {
+      "main": [
+        [
+          {
+            "node": "Ambil Dev Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ambil Dev Set": {
+      "main": [
+        [
+          {
+            "node": "Loop Per Pertanyaan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Per Pertanyaan": {
+      "main": [
+        [
+          {
+            "node": "Ringkas Skor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Tanya Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tanya Agent": {
+      "main": [
+        [
+          {
+            "node": "Gabung Jawaban",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gabung Jawaban": {
+      "main": [
+        [
+          {
+            "node": "Hakim LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hakim LLM": {
+      "main": [
+        [
+          {
+            "node": "Baris Skor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baris Skor": {
+      "main": [
+        [
+          {
+            "node": "Simpan Skor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpan Skor": {
+      "main": [
+        [
+          {
+            "node": "Loop Per Pertanyaan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Hakim LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Penilaian": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Hakim LLM",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "68ff02c9-6c34-461f-b2eb-874d77fca66c",
+  "meta": {
+    "instanceId": "fcd548fe7e1349473dda4add077f040aeb00e1f4bd4bdde8ff1998bd5b242133"
+  },
+  "nodeGroups": [],
+  "id": "XItOckC70nWvLOcP",
+  "tags": []
+}

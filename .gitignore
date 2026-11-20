@@ -1,0 +1,60 @@
+# Environment variables and private keys
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.ppk
+
+# Dependencies, frontend builds, and caches
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+.eslintcache
+
+# Python deployment helpers
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Database / n8n backups and deployment artifacts
+/backup/
+/backups/
+/catalog-backups/
+/frontend-backups/
+/frontend-releases/
+/frontend/reverted-dist/
+*.dump
+*.backup
+
+# Local container data (if bind mounts are used)
+/postgres_data/
+/n8n_data/
+/caddy_data/
+/caddy_config/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Editor and operating-system files
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+/data/foto/*
+!/data/foto/.gitkeep
+
+/presentation
+/voice-backups/

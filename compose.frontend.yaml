@@ -1,0 +1,6 @@
+# Apply alongside the EXISTING EC2 compose.yaml, not instead of it.
+# Only Caddy is recreated. No changes to n8n, PostgreSQL, or runner volumes.
+services:
+  caddy:
+    volumes:
+      - ./frontend-releases:/srv/senja:ro

@@ -1,0 +1,65 @@
+{
+    email {$SSL_EMAIL}
+}
+
+(owner_auth) {
+__OWNER_AUTH__
+}
+
+{$DOMAIN_NAME} {
+    encode zstd gzip
+
+    @blocked path /webhook/realtime-token/* /mcp /mcp/* /mcp-test /mcp-test/* /mcp-server /mcp-server/* /webhook/ide05-realtime-token /webhook/ide05-realtime-token/* /webhook-test/realtime-token /webhook-test/realtime-token/* /webhook-test/ide05-realtime-token /webhook-test/ide05-realtime-token/*
+    handle @blocked {
+        respond "Endpoint not public" 403
+    }
+
+    @owner path /webhook/realtime-token /dashboard /dashboard/* /webhook/ingest /webhook/ingest/* /webhook/eval /webhook/eval/* /webhook/pesanan /webhook/pesanan/* /webhook/tanpa-jawaban /webhook/tanpa-jawaban/* /webhook/skor /webhook/skor/* /webhook/ide05-ingest /webhook/ide05-ingest/* /webhook/ide05-eval /webhook/ide05-eval/* /webhook/ide05-pesanan /webhook/ide05-pesanan/* /webhook/ide05-tanpa-jawaban /webhook/ide05-tanpa-jawaban/* /webhook/ide05-skor /webhook/ide05-skor/* /webhook-test /webhook-test/*
+    handle @owner {
+        import owner_auth
+        @dashboard path /dashboard /dashboard/*
+        handle @dashboard {
+            root * /srv/senja/current
+            try_files {path} /dashboard/index.html
+            header Cache-Control "no-store"
+            header X-Content-Type-Options "nosniff"
+            file_server
+        }
+        handle {
+            header Cache-Control "no-store"
+            reverse_proxy n8n:5678 {
+                flush_interval -1
+            }
+        }
+    }
+
+    @chat path /chat /chat/*
+    handle @chat {
+        root * /srv/senja/current
+        try_files {path} /chat/index.html
+        header Cache-Control "no-cache"
+        header X-Content-Type-Options "nosniff"
+        file_server
+    }
+    handle /senja-assets/* {
+        root * /srv/senja/current
+        header Cache-Control "public, max-age=31536000, immutable"
+        header X-Content-Type-Options "nosniff"
+        file_server
+    }
+    @chat_api path /webhook/chat /webhook/chat/*
+    handle @chat_api {
+        request_body {
+            max_size 8MB
+        }
+        header Cache-Control "no-store"
+        reverse_proxy n8n:5678 {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy n8n:5678 {
+            flush_interval -1
+        }
+    }
+}

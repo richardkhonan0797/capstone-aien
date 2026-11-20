@@ -1,0 +1,427 @@
+{
+  "name": "AI Sales Agent · Ingest Katalog",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "**Ingest katalog ke PGVector.** Dokumen = satu baris per produk (nama, kategori, harga, deskripsi) + dokumen FAQ/kebijakan dari tabel `retail.dokumen`. Stok tidak ikut di vektor karena berubah terus; stok selalu dibaca dari Postgres lewat tool cek_stok.",
+        "height": 110,
+        "width": 760,
+        "color": 4
+      },
+      "name": "Catatan 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "27b97d01-d403-4a7f-8be8-7cb198119855"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook Ingest Paksa",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        224
+      ],
+      "id": "95e2182f-2be8-4406-b71f-e84d4b316fe7",
+      "webhookId": "afb2b5cb-603d-4fab-a254-401dc04a379e"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "name": "Jadwal Cek Katalog (1 Jam)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        464
+      ],
+      "id": "2dd67d08-5fa2-430b-9064-fd5e294845b5"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH current_hash AS (\n    SELECT \n        md5(\n            COALESCE(\n                (SELECT string_agg(sumber || '|' || teks, ';' ORDER BY sumber) FROM retail.dokumen), \n                ''\n            ) \n            || \n            COALESCE(\n                (SELECT string_agg(sku || '|' || nama || '|' || harga::text || '|' || deskripsi, ';' ORDER BY sku) FROM retail.produk), \n                ''\n            )\n        ) AS hash_val\n)\nSELECT \n    (hash_val IS DISTINCT FROM (SELECT hash FROM retail.ingest_state)) AS berubah,\n    hash_val AS hash\nFROM current_hash;",
+        "options": {}
+      },
+      "name": "Cek Perubahan Katalog",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        464
+      ],
+      "id": "fbec57ea-d156-4a65-9c72-2ff478f2b3f7",
+      "credentials": {
+        "postgres": {
+          "id": "xaI5gidvhP6gow66",
+          "name": "app_reader"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cf90ce08059c",
+              "leftValue": "={{ $json.berubah }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Katalog Berubah?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        528,
+        464
+      ],
+      "id": "ec0533ef-584c-4ffb-8594-8e58eaf79b1e"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DROP TABLE IF EXISTS retail_katalog",
+        "options": {}
+      },
+      "name": "Kosongkan Tabel Vektor",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        784,
+        224
+      ],
+      "id": "b020bd97-df88-481e-9b69-13957f2275f8",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT sumber, teks FROM retail.dokumen ORDER BY sumber",
+        "options": {}
+      },
+      "name": "Ambil Dokumen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1040,
+        224
+      ],
+      "id": "b6b92f78-f4e3-4e32-bbbf-fd3598154add",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT sku, nama, kategori, harga, deskripsi FROM retail.produk ORDER BY sku",
+        "options": {}
+      },
+      "name": "Ambil Produk",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1296,
+        224
+      ],
+      "id": "fba553e2-4089-4264-b926-29cc8f702609",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = $('Ambil Produk').all().map(i => {\n  const p = i.json;\n  return { json: { tipe: 'produk', sku: p.sku, sumber: p.nama,\n    teks: `${p.nama}. Kategori ${p.kategori}. Harga Rp${Number(p.harga).toLocaleString('id-ID')}. ${p.deskripsi}` } };\n});\nfor (const d of $('Ambil Dokumen').all()) out.push({ json: { tipe: 'dokumen', sku: '', sumber: d.json.sumber, teks: d.json.teks } });\nreturn out;"
+      },
+      "name": "Susun Dokumen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        224
+      ],
+      "id": "18552165-5591-4f46-b547-8ba41fa81fa3"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": "retail_katalog",
+        "embeddingBatchSize": 50,
+        "options": {}
+      },
+      "name": "Simpan ke PGVector",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
+      "typeVersion": 1.3,
+      "position": [
+        1808,
+        224
+      ],
+      "id": "2752cb27-351f-4396-87ee-5a310ecc3e49",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1744,
+        432
+      ],
+      "id": "39ac588c-85ac-4365-baf9-18610c965d81",
+      "credentials": {
+        "openAiApi": {
+          "id": "ncp0mJmJnQ6RScKi",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.teks }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "sumber",
+                "value": "={{ $json.sumber }}"
+              },
+              {
+                "name": "tipe",
+                "value": "={{ $json.tipe }}"
+              },
+              {
+                "name": "sku",
+                "value": "={{ $json.sku }}"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Muat Dokumen",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1968,
+        432
+      ],
+      "id": "a55ea5f2-277c-4fab-b580-6968d0f1e7e5"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE retail.ingest_state \nSET \n    hash = md5(\n        COALESCE(\n            (SELECT string_agg(sumber || '|' || teks, ';' ORDER BY sumber) FROM retail.dokumen), \n            ''\n        ) \n        || \n        COALESCE(\n            (SELECT string_agg(sku || '|' || nama || '|' || harga::text || '|' || deskripsi, ';' ORDER BY sku) FROM retail.produk), \n            ''\n        )\n    ), \n    jumlah_dokumen = $1::int, \n    updated_at = now() \nWHERE \n    id = 1 \nRETURNING \n    jumlah_dokumen AS dokumen_masuk, \n    hash, \n    updated_at;",
+        "options": {
+          "queryReplacement": "={{ [ $('Susun Dokumen').all().length ] }}"
+        }
+      },
+      "name": "Catat Ingest",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2096,
+        224
+      ],
+      "id": "48c56e32-72e3-4e20-a7e1-0655efd86e32",
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Ingest Paksa": {
+      "main": [
+        [
+          {
+            "node": "Kosongkan Tabel Vektor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kosongkan Tabel Vektor": {
+      "main": [
+        [
+          {
+            "node": "Ambil Dokumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ambil Dokumen": {
+      "main": [
+        [
+          {
+            "node": "Ambil Produk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ambil Produk": {
+      "main": [
+        [
+          {
+            "node": "Susun Dokumen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Susun Dokumen": {
+      "main": [
+        [
+          {
+            "node": "Simpan ke PGVector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simpan ke PGVector": {
+      "main": [
+        [
+          {
+            "node": "Catat Ingest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jadwal Cek Katalog (1 Jam)": {
+      "main": [
+        [
+          {
+            "node": "Cek Perubahan Katalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cek Perubahan Katalog": {
+      "main": [
+        [
+          {
+            "node": "Katalog Berubah?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Katalog Berubah?": {
+      "main": [
+        [
+          {
+            "node": "Kosongkan Tabel Vektor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Simpan ke PGVector",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Muat Dokumen": {
+      "ai_document": [
+        [
+          {
+            "node": "Simpan ke PGVector",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6e585fe5-cddf-4ad1-8897-402a0a959b4c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fcd548fe7e1349473dda4add077f040aeb00e1f4bd4bdde8ff1998bd5b242133"
+  },
+  "nodeGroups": [],
+  "id": "x2yFjWEnRWGAYedS",
+  "tags": []
+}

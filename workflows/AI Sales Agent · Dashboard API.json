@@ -1,0 +1,258 @@
+{
+  "name": "AI Sales Agent · Dashboard API",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "**API dashboard owner.** GET `pesanan`, GET `tanpa-jawaban`, GET `skor`. Semua mengembalikan `{ data: ... }`; CORS terbuka bawaan webhook n8n.",
+        "height": 90,
+        "width": 760,
+        "color": 4
+      },
+      "name": "Catatan 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a764de97-c8e4-4fa9-9c9c-0f98da0619a0"
+    },
+    {
+      "parameters": {
+        "path": "pesanan",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "GET Pesanan",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        224
+      ],
+      "id": "730e64c0-fec9-4847-bd26-88eabf035a42",
+      "webhookId": "9504f1cd-66bd-4f12-af1b-1acc96a7e8bf"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    COALESCE(json_agg(t ORDER BY t.id DESC), '[]'::json) AS data \nFROM (\n    SELECT \n        o.id, \n        o.created_at, \n        o.session_id, \n        o.nama_pembeli, \n        o.alamat, \n        o.sku, \n        p.nama AS produk, \n        o.qty, \n        o.total, \n        o.status \n    FROM retail.pesanan o \n    JOIN retail.produk p \n        USING (sku) \n    ORDER BY o.id DESC \n    LIMIT 100\n) t;",
+        "options": {}
+      },
+      "name": "Query Pesanan",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        224
+      ],
+      "id": "e000a181-c9ff-41a1-848b-c28a6abeb8c7",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "Balas Pesanan",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        528,
+        224
+      ],
+      "id": "1f48086f-7d23-44a0-a5ec-d8d70ae63963"
+    },
+    {
+      "parameters": {
+        "path": "tanpa-jawaban",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "GET Tanpa Jawaban",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        432
+      ],
+      "id": "c76096c5-1754-4d8b-bcb8-10622ed6a54b",
+      "webhookId": "e9487025-f3c5-4599-bb26-63b72f0efd7f"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n    COALESCE(json_agg(t ORDER BY t.id DESC), '[]'::json) AS data \nFROM (\n    SELECT \n        id, \n        created_at, \n        session_id, \n        pertanyaan, \n        alasan \n    FROM retail.pertanyaan_tanpa_jawaban \n    ORDER BY id DESC \n    LIMIT 100\n) t;",
+        "options": {}
+      },
+      "name": "Query Tanpa Jawaban",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        432
+      ],
+      "id": "fcddbe1f-6927-41cf-ac02-b8a34662729b",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "Balas Tanpa Jawaban",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        528,
+        432
+      ],
+      "id": "3194c939-203e-4c39-930c-d39cb9b2842a"
+    },
+    {
+      "parameters": {
+        "path": "skor",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "GET Skor Evaluasi",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        624
+      ],
+      "id": "1440a8f9-a815-44fa-baa3-78d622b6cde3",
+      "webhookId": "13d4b135-4307-4390-8709-f4ce6f0bb579"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH last AS (\n    SELECT run_id \n    FROM retail.eval_hasil \n    ORDER BY id DESC \n    LIMIT 1\n) \nSELECT \n    json_build_object(\n        'run_id', \n        (SELECT run_id FROM last), \n        'ringkasan', \n        (\n            SELECT json_build_object(\n                'total', count(*), \n                'benar_pct', round(100.0 * avg(benar::int), 1), \n                'bersumber_pct', round(100.0 * avg(bersumber::int), 1), \n                'halusinasi_pct', round(100.0 * avg(halusinasi::int), 1)\n            ) \n            FROM retail.eval_hasil \n            WHERE run_id = (SELECT run_id FROM last)\n        ), \n        'detail', \n        (\n            SELECT COALESCE(\n                json_agg(\n                    json_build_object(\n                        'qid', qid, \n                        'pertanyaan', pertanyaan, \n                        'benar', benar, \n                        'bersumber', bersumber, \n                        'halusinasi', halusinasi, \n                        'catatan', catatan\n                    ) \n                    ORDER BY qid\n                ), \n                '[]'::json\n            ) \n            FROM retail.eval_hasil \n            WHERE run_id = (SELECT run_id FROM last)\n        )\n    ) AS data;",
+        "options": {}
+      },
+      "name": "Query Skor Evaluasi",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        256,
+        624
+      ],
+      "id": "ed817da9-c36d-4376-9a29-0d17d1cd0513",
+      "credentials": {
+        "postgres": {
+          "id": "eQJ5PvPcY99byTEV",
+          "name": "app_writer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "Balas Skor Evaluasi",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        528,
+        624
+      ],
+      "id": "855de09e-4cba-47b7-a847-68de9b5f291a"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "GET Pesanan": {
+      "main": [
+        [
+          {
+            "node": "Query Pesanan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Pesanan": {
+      "main": [
+        [
+          {
+            "node": "Balas Pesanan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Tanpa Jawaban": {
+      "main": [
+        [
+          {
+            "node": "Query Tanpa Jawaban",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Tanpa Jawaban": {
+      "main": [
+        [
+          {
+            "node": "Balas Tanpa Jawaban",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GET Skor Evaluasi": {
+      "main": [
+        [
+          {
+            "node": "Query Skor Evaluasi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Skor Evaluasi": {
+      "main": [
+        [
+          {
+            "node": "Balas Skor Evaluasi",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "3ae8b4a6-411d-4f6f-9c32-c64a8a1f2dcf",
+  "meta": {
+    "instanceId": "fcd548fe7e1349473dda4add077f040aeb00e1f4bd4bdde8ff1998bd5b242133"
+  },
+  "nodeGroups": [],
+  "id": "3YezGIapW1RLvO0p",
+  "tags": []
+}

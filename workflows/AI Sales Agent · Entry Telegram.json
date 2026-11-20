@@ -1,0 +1,294 @@
+{
+  "name": "AI Sales Agent · Entry Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "**Belum diuji live:** Telegram Trigger butuh URL HTTPS publik. Alur setelah trigger (panggil `chat`) sudah diuji lewat webhook. Teks dan foto didukung.",
+        "height": 90,
+        "width": 760,
+        "color": 4
+      },
+      "name": "Catatan 0",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9633f7c7-d15e-4341-ad00-4da5b87937cb"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        224
+      ],
+      "id": "60e167ef-d1dd-4a6f-ad10-611da3ad8d72",
+      "webhookId": "1ee3810c-8bac-4662-aa21-32d947ce643b",
+      "credentials": {
+        "telegramApi": {
+          "id": "kkWbg7wULQnRu5v9",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const m = $json.message || {};\nconst photo = (m.photo || []).slice(-1)[0];\nreturn [{ json: { chat_id: m.chat && m.chat.id, session_id: 'tg-' + (m.chat && m.chat.id), message: m.text || m.caption || '', file_id: photo ? photo.file_id : '', ada_foto: Boolean(photo) } }];"
+      },
+      "name": "Siapkan Pesan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        224
+      ],
+      "id": "4c57b5b8-1b95-4efe-8cee-390da376544d"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6c49517869cb",
+              "leftValue": "={{ $json.ada_foto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "name": "Ada Foto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        528,
+        224
+      ],
+      "id": "eb096374-197f-4d70-9a93-cd35301ea197"
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "fileId": "={{ $json.file_id }}",
+        "additionalFields": {}
+      },
+      "name": "Unduh Foto",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        784,
+        112
+      ],
+      "id": "14874c4a-a432-4bd0-a1bf-c09e6e69bba6",
+      "webhookId": "bce125d5-7e03-4d2e-afb4-764961b5a6da",
+      "credentials": {
+        "telegramApi": {
+          "id": "kkWbg7wULQnRu5v9",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Siapkan Pesan').first().json;\nconst buf = await this.helpers.getBinaryDataBuffer(0, 'data');\nreturn [{ json: { ...base, image_base64: buf.toString('base64'), image_mime: 'image/jpeg' } }];"
+      },
+      "name": "Foto ke Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        112
+      ],
+      "id": "7f5235a9-7c43-4732-a7a3-576bcbb9b8f5"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8b747228-85fd-5fe2-b419-47f62e600955",
+              "name": "image_base64",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Teks Saja",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        784,
+        320
+      ],
+      "id": "e98751eb-300a-4d1d-8e19-282e4f0342c3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.message, session_id: $json.session_id, image_base64: $json.image_base64 }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "name": "Tanya Chat Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1296,
+        224
+      ],
+      "id": "3391cb25-ed02-4bc0-b1df-6a0c0bc134e9"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Siapkan Pesan').first().json.chat_id }}",
+        "text": "={{ $json.jawaban }}{{ ($json.sumber || []).length ? '\\n\\nSumber: ' + $json.sumber.join('; ') : '' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "name": "Balas Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1568,
+        224
+      ],
+      "id": "8c31f04a-b793-4dac-8963-9dde3e8dcfdd",
+      "webhookId": "0c0a0568-a340-4455-afb8-7bfaa64e40f4",
+      "credentials": {
+        "telegramApi": {
+          "id": "kkWbg7wULQnRu5v9",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Siapkan Pesan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Siapkan Pesan": {
+      "main": [
+        [
+          {
+            "node": "Ada Foto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ada Foto?": {
+      "main": [
+        [
+          {
+            "node": "Unduh Foto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Teks Saja",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unduh Foto": {
+      "main": [
+        [
+          {
+            "node": "Foto ke Base64",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Foto ke Base64": {
+      "main": [
+        [
+          {
+            "node": "Tanya Chat Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teks Saja": {
+      "main": [
+        [
+          {
+            "node": "Tanya Chat Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tanya Chat Agent": {
+      "main": [
+        [
+          {
+            "node": "Balas Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1a8bca0f-3957-454b-ae35-3c1a838cb18d",
+  "meta": {
+    "instanceId": "fcd548fe7e1349473dda4add077f040aeb00e1f4bd4bdde8ff1998bd5b242133"
+  },
+  "nodeGroups": [],
+  "id": "vfXzFNNltvmvZYzH",
+  "tags": []
+}
